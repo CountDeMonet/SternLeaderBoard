@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Insider users · Stern LeaderBoard</title>
+<style>
+  :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #111615; color: #eff4ef; }
+  * { box-sizing: border-box; }
+  main { max-width: 76rem; margin: auto; padding: 3rem clamp(1rem, 5vw, 4rem); }
+  header { border-bottom: 1px solid #394540; padding-bottom: 1.4rem; }
+  h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.5rem); letter-spacing: -.045em; }
+  p { color: #b6c4bd; line-height: 1.5; }
+  a { color: #a8edb9; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  form { background: #1b2420; border: 1px solid #394540; border-radius: .65rem; padding: 1rem; margin-bottom: .75rem; }
+  .account { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: .8rem; }
+  code { color: #c2cec7; overflow-wrap: anywhere; font-size: .85rem; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: .75rem; }
+  label { display: grid; gap: .35rem; color: #d9e3dd; font-size: .9rem; }
+  input, button { font: inherit; border: 1px solid #596b62; border-radius: .4rem; padding: .58rem .75rem; }
+  input { width: 100%; min-width: 0; background: #111615; color: #eff4ef; }
+  button { background: #a8edb9; color: #14251a; font-weight: 650; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: default; }
+  #refresh { background: transparent; color: #eff4ef; }
+  :focus-visible { outline: 2px solid #a8edb9; outline-offset: 3px; }
+  output { display: block; color: #b6c4bd; }
+  output:not(:empty) { margin-top: .6rem; }
+  [data-error] { color: #ffc4b3; }
+  @media (max-width: 40rem) { .fields { grid-template-columns: 1fr; } .fields button { justify-self: start; } }
+</style>
+<main>
+  <header>
+    <h1>Insider users</h1>
+    <p>Map Insider Connected accounts to names. New players appear after they finish a game while signed in.</p>
+    <a href="/scores">Score feeds</a>
+  </header>
+  <section aria-label="User directory">
+    <div class="toolbar">
+      <p id="status" role="status"></p>
+      <button id="refresh" type="button">Refresh list</button>
+    </div>
+    <div id="users"></div>
+  </section>
+</main>
+<template id="user-row">
+  <form>
+    <div class="account"><strong></strong><code></code></div>
+    <div class="fields">
+      <label>Stern username<input name="username" maxlength="100" autocomplete="off"></label>
+      <label>Display name override<input name="display_name" maxlength="100" autocomplete="off"></label>
+      <button type="submit" disabled>Save</button>
+    </div>
+    <output role="status"></output>
+  </form>
+</template>
+<script>
+  const list = document.querySelector('#users');
+  const status = document.querySelector('#status');
+  const refresh = document.querySelector('#refresh');
+  const template = document.querySelector('#user-row');
+  const rows = new Map();
+
+  function showUser(user) {
+    const uuid = user.insider_uuid;
+    const row = template.content.firstElementChild.cloneNode(true);
+    const title = row.querySelector('strong');
+    const username = row.elements.username;
+    const displayName = row.elements.display_name;
+    const save = row.querySelector('button');
+    const result = row.querySelector('output');
+    row.querySelector('code').textContent = uuid;
+    username.value = username.defaultValue = user.username ?? '';
+    displayName.value = displayName.defaultValue = user.display_name ?? '';
+    title.textContent = user.display_name ?? user.username ?? 'Unmapped player';
+    row.addEventListener('input', () => {
+      save.disabled = username.value === username.defaultValue && displayName.value === displayName.defaultValue;
+      result.textContent = '';
+    });
+    row.addEventListener('submit', async event => {
+      event.preventDefault();
+      save.disabled = username.disabled = displayName.disabled = true;
+      result.removeAttribute('data-error');
+      result.textContent = 'Saving…';
+      const names = { username: username.value.trim(), display_name: displayName.value.trim() };
+      try {
+        const response = await fetch('/api/users/' + encodeURIComponent(uuid), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(names),
+        });
+        if (!response.ok) throw new Error((await response.json()).error);
+        username.value = username.defaultValue = names.username;
+        displayName.value = displayName.defaultValue = names.display_name;
+        title.textContent = names.display_name || names.username || 'Unmapped player';
+        result.textContent = 'Saved';
+      } catch (error) {
+        result.setAttribute('data-error', '');
+        result.textContent = error.message || 'Could not save user.';
+        save.disabled = false;
+      } finally {
+        username.disabled = displayName.disabled = false;
+      }
+    });
+    return row;
+  }
+
+  async function loadUsers() {
+    refresh.disabled = true;
+    status.removeAttribute('data-error');
+    status.textContent = 'Loading users…';
+    try {
+      const response = await fetch('/api/users');
+      if (!response.ok) throw new Error();
+      const users = await response.json();
+      for (const user of users) {
+        if (rows.has(user.insider_uuid)) continue;
+        const row = showUser(user);
+        rows.set(user.insider_uuid, row);
+        if (user.username || user.display_name) list.append(row);
+        else list.prepend(row);
+      }
+      status.textContent = users.length
+        ? users.length + (users.length === 1 ? ' user' : ' users')
+        : 'No Insider users yet.';
+    } catch {
+      status.setAttribute('data-error', '');
+      status.textContent = 'Could not load users. Try refreshing the list.';
+    } finally {
+      refresh.disabled = false;
+    }
+  }
+  refresh.addEventListener('click', loadUsers);
+  loadUsers();
+</script>
+</html>
