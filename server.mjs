@@ -3,10 +3,12 @@ import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import { renderHome, renderMachine } from './score-pages.mjs';
 
 const configPath = resolve(process.argv[2] ?? fileURLToPath(new URL('./config.json', import.meta.url)));
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const usersPage = readFileSync(new URL('./users.html', import.meta.url));
+const scoreStyles = readFileSync(new URL('./score-pages.css', import.meta.url));
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const insiderPattern = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
 const games = new Map(Object.entries(config.games));
@@ -120,6 +122,13 @@ const history = database.prepare(`
   WHERE slug = ? AND id < ?
   ORDER BY id DESC LIMIT ?
 `);
+const recent = database.prepare(`
+  SELECT id, slug, received_at_ms, payload FROM games_played
+  WHERE slug IN (SELECT value FROM json_each(?))
+  ORDER BY id DESC LIMIT ?
+`);
+const configuredSlugs = JSON.stringify([...games.keys()]);
+const historyPageSize = 20;
 const maxBodyBytes = 16 * 1024;
 const retryWindowMs = 30_000;
 
@@ -160,6 +169,26 @@ function json(response, status, data) {
   response.end(body);
 }
 
+function readEvent(row) {
+  // Preserve the exact numeric tokens PAD sent, even for very large scores.
+  const payload = JSON.parse(row.payload, (_key, value, context) =>
+    typeof value === 'number' ? JSON.rawJSON(context.source) : value);
+  return {
+    id: row.id,
+    received_at: new Date(row.received_at_ms).toISOString(),
+    payload,
+    insider_users: payload.insider.map(resolvePlayer),
+  };
+}
+
+function html(response, body) {
+  return response.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Content-Security-Policy': "default-src 'none'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+  }).end(body);
+}
+
 async function readJsonBody(request, response) {
   if (request.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     json(response, 415, { error: 'Expected application/json' });
@@ -183,8 +212,29 @@ async function readJsonBody(request, response) {
 
 async function handle(request, response) {
   const url = new URL(request.url, 'http://localhost');
-  if (request.method === 'GET' && url.pathname === '/') {
-    return response.writeHead(302, { Location: '/users' }).end();
+  if (request.method === 'GET') {
+    if (url.pathname === '/') {
+      const events = recent.all(configuredSlugs, 8).map(row => ({ ...readEvent(row), slug: row.slug }));
+      return html(response, renderHome(games, events));
+    }
+    if (url.pathname === '/score-pages.css') {
+      return response.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-cache' }).end(scoreStyles);
+    }
+    const machineSlug = /^\/machines\/([^/]+)$/.exec(url.pathname)?.[1];
+    if (games.has(machineSlug)) {
+      const before = Number(url.searchParams.get('before') ?? Number.MAX_SAFE_INTEGER);
+      if (!Number.isSafeInteger(before) || before < 1) {
+        return json(response, 400, { error: 'Use a positive integer before cursor' });
+      }
+      const rows = history.all(machineSlug, before, historyPageSize + 1);
+      return html(response, renderMachine({
+        slug: machineSlug,
+        name: games.get(machineSlug),
+        events: rows.slice(0, historyPageSize).map(readEvent),
+        hasOlder: rows.length > historyPageSize,
+        isLatest: !url.searchParams.has('before'),
+      }));
+    }
   }
   if (request.method === 'GET' && url.pathname === '/users') {
     return response.writeHead(200, {
@@ -237,17 +287,7 @@ async function handle(request, response) {
       return json(response, 400, { error: 'Use limit 1–500 and a positive integer before cursor' });
     }
     const rows = history.all(slug, before, limit + 1);
-    const events = rows.slice(0, limit).map(row => {
-      // A structured object is emitted with the exact numeric tokens PAD sent.
-      const payload = JSON.parse(row.payload, (_key, value, context) =>
-        typeof value === 'number' ? JSON.rawJSON(context.source) : value);
-      return {
-        id: row.id,
-        received_at: new Date(row.received_at_ms).toISOString(),
-        payload,
-        insider_users: payload.insider.map(resolvePlayer),
-      };
-    });
+    const events = rows.slice(0, limit).map(readEvent);
     return json(response, 200, {
       slug, name: games.get(slug), events,
       next_before: rows.length > limit ? events.at(-1).id : null,
