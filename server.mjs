@@ -12,10 +12,21 @@ const scoreStyles = readFileSync(new URL('./score-pages.css', import.meta.url));
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const insiderPattern = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
 const games = new Map(Object.entries(config.games));
+const machineImages = new Map();
 
 for (const [slug, name] of games) {
   if (!slugPattern.test(slug) || typeof name !== 'string' || !name.trim()) {
     throw new Error(`Invalid game configuration for "${slug}"`);
+  }
+}
+
+for (const [slug, filename] of Object.entries(config.machine_images ?? {})) {
+  if (!games.has(slug) || typeof filename !== 'string' || !/^[\w-]+\.png$/i.test(filename)) continue;
+  try {
+    machineImages.set(slug, readFileSync(new URL(filename, import.meta.url)));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    console.warn(`Machine image missing for ${slug}: ${filename}`);
   }
 }
 
@@ -185,7 +196,7 @@ function html(response, body) {
   return response.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
-    'Content-Security-Policy': "default-src 'none'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+    'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'",
   }).end(body);
 }
 
@@ -215,10 +226,19 @@ async function handle(request, response) {
   if (request.method === 'GET') {
     if (url.pathname === '/') {
       const events = recent.all(configuredSlugs, 8).map(row => ({ ...readEvent(row), slug: row.slug }));
-      return html(response, renderHome(games, events));
+      return html(response, renderHome(games, events, machineImages));
     }
     if (url.pathname === '/score-pages.css') {
       return response.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-cache' }).end(scoreStyles);
+    }
+    const imageSlug = /^\/machine-images\/([a-z0-9-]+)\.png$/.exec(url.pathname)?.[1];
+    const image = machineImages.get(imageSlug);
+    if (image) {
+      return response.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': image.length,
+        'Cache-Control': 'no-cache',
+      }).end(image);
     }
     const machineSlug = /^\/machines\/([^/]+)$/.exec(url.pathname)?.[1];
     if (games.has(machineSlug)) {
@@ -230,6 +250,7 @@ async function handle(request, response) {
       return html(response, renderMachine({
         slug: machineSlug,
         name: games.get(machineSlug),
+        hasImage: machineImages.has(machineSlug),
         events: rows.slice(0, historyPageSize).map(readEvent),
         hasOlder: rows.length > historyPageSize,
         isLatest: !url.searchParams.has('before'),

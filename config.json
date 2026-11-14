@@ -7,6 +7,11 @@
     "stranger-things": "Stranger Things",
     "jaws": "Jaws"
   },
+  "machine_images": {
+    "munsters": "munsters.png",
+    "stranger-things": "strangerthings.png",
+    "jaws": "jaws.png"
+  },
   "insider_users": {
     "1664511f-3689-4a02-9731-691f13f7ecbb": {
       "username": "CountDeMonet",

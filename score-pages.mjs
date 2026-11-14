@@ -42,34 +42,40 @@ function scoreCard(event, title) {
   </article>`;
 }
 
-export function renderHome(games, events) {
+export function renderHome(games, events, machineImages) {
   const [latest, ...previous] = events;
   const machineLink = slug => `<a href="/machines/${slug}">${escape(games.get(slug))}</a>`;
   const machines = [...games].map(([slug, name]) => `
-    <li><a href="/machines/${slug}"><span>${escape(name)}</span><span aria-hidden="true">↗</span></a></li>`).join('');
+    <li><a href="/machines/${slug}">
+      ${machineImages.has(slug) ? `<img src="/machine-images/${slug}.png" alt="" decoding="async">` : ''}
+      <span class="machine-name">${escape(name)} <span aria-hidden="true">↗</span></span>
+    </a></li>`).join('');
   return page('Home', 'home', `
     <div class="intro"><h1>Home arcade</h1><p>Recent scores and game history from your pinball machines.</p></div>
-    <div class="overview">
-      <section class="section latest"><h2>Latest game</h2>
-        ${latest ? scoreCard(latest, machineLink(latest.slug)) : '<p class="empty">Waiting for the first game.</p>'}
-      </section>
-      <section class="section"><h2>Machines</h2>
-        ${machines ? `<ul class="machines">${machines}</ul>` : '<p class="empty">No machines configured.</p>'}
-      </section>
-    </div>
+    <section class="section"><h2>Machines</h2>
+      ${machines ? `<ul class="machines">${machines}</ul>` : '<p class="empty">No machines configured.</p>'}
+    </section>
+    <section class="section latest"><h2>Latest game</h2>
+      ${latest ? scoreCard(latest, machineLink(latest.slug)) : '<p class="empty">Waiting for the first game.</p>'}
+    </section>
     ${previous.length ? `<section class="section"><h2>Recent games</h2>
       <div class="cards">${previous.map(event => scoreCard(event, machineLink(event.slug))).join('')}</div>
     </section>` : ''}
   `);
 }
 
-export function renderMachine({ slug, name, events, hasOlder, isLatest }) {
+export function renderMachine({ slug, name, hasImage, events, hasOlder, isLatest }) {
   const latest = isLatest ? events[0] : null;
   const earlier = isLatest ? events.slice(1) : events;
   const gameTitle = event => `Game #${escape(event.payload.game_number.rawJSON)}`;
   return page(name, 'machine', `
     <div class="intro"><a class="back" href="/">← All machines</a><h1>${escape(name)}</h1></div>
-    ${latest ? `<section class="section latest"><h2>Latest game</h2>${scoreCard(latest, gameTitle(latest))}</section>` : ''}
+    <div class="machine-feature">
+      ${hasImage ? `<img class="machine-art" src="/machine-images/${slug}.png" alt="" decoding="async">` : ''}
+      ${isLatest ? `<section class="section latest"><h2>Latest game</h2>
+        ${latest ? scoreCard(latest, gameTitle(latest)) : '<p class="empty">Waiting for the first game.</p>'}
+      </section>` : ''}
+    </div>
     <section class="section"><h2>Game history</h2>
       ${earlier.length ? `<div class="cards">${earlier.map(event => scoreCard(event, gameTitle(event))).join('')}</div>`
         : `<p class="empty">${latest ? 'Earlier games will appear here.' : 'No games on this page.'}</p>`}
