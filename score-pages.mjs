@@ -4,6 +4,22 @@ const numberFormat = new Intl.NumberFormat('en-US');
 const dates = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/New_York',
 });
+const gameTypeLabels = new Map([
+  ['standard', 'Standard'],
+  ['challenge', 'Challenge'],
+  ['competition', 'Competition'],
+  ['tournament', 'Tournament'],
+  ['head_to_head', 'Head-to-head'],
+  ['team', 'Team'],
+  ['cooperation', 'Cooperation'],
+]);
+
+function modeLabel(gameType, challenge) {
+  if (gameType === 'challenge' && typeof challenge === 'string' && challenge.trim()) {
+    return `Challenge · ${challenge.trim()}`;
+  }
+  return gameTypeLabels.get(gameType) ?? 'Unknown game type';
+}
 
 function page(title, current, body) {
   return `<!doctype html>
@@ -37,7 +53,8 @@ function scoreCard(event, title) {
       <strong>${numberFormat.format(BigInt(score.rawJSON))}</strong>
     </li>`).join('');
   return `<article class="score">
-    <header><h3>${title}</h3><time datetime="${event.received_at}">${date} ET</time></header>
+    <header><h3>${title}</h3><span class="mode">${escape(modeLabel(event.payload.game_type, event.payload.challenge))}</span>
+      <time datetime="${event.received_at}">${date} ET</time></header>
     <ol>${scores}</ol>
   </article>`;
 }
@@ -64,7 +81,7 @@ export function renderHome(games, events, machineImages) {
   `);
 }
 
-export function renderMachine({ slug, name, hasImage, events, hasOlder, isLatest }) {
+export function renderMachine({ slug, name, hasImage, groups, events, hasOlder, isLatest }) {
   const latest = isLatest ? events[0] : null;
   const earlier = isLatest ? events.slice(1) : events;
   const gameTitle = event => `Game #${escape(event.payload.game_number.rawJSON)}`;
@@ -76,6 +93,17 @@ export function renderMachine({ slug, name, hasImage, events, hasOlder, isLatest
         ${latest ? scoreCard(latest, gameTitle(latest)) : '<p class="empty">Waiting for the first game.</p>'}
       </section>` : ''}
     </div>
+    ${isLatest ? `<section class="section"><h2>High scores by game type</h2>
+      ${groups.length ? `<div class="cards">${groups.map(group => `
+        <article class="score">
+          <h3>${escape(modeLabel(group.game_type, group.challenge))}</h3>
+          <ol>${group.scores.map(entry => `
+            <li><span><span class="position">${entry.rank}.</span>
+              ${escape(entry.insider_user?.display_name ?? `Player ${entry.player}`)}</span>
+              <strong>${numberFormat.format(BigInt(entry.score.rawJSON))}</strong></li>`).join('')}
+          </ol>
+        </article>`).join('')}</div>` : '<p class="empty">High scores will appear after the first game.</p>'}
+    </section>` : ''}
     <section class="section"><h2>Game history</h2>
       ${earlier.length ? `<div class="cards">${earlier.map(event => scoreCard(event, gameTitle(event))).join('')}</div>`
         : `<p class="empty">${latest ? 'Earlier games will appear here.' : 'No games on this page.'}</p>`}

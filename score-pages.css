@@ -52,6 +52,7 @@ h3 { font-size: 1.1rem; }
 .latest h3 { font-size: clamp(1.25rem, 4vw, 1.95rem); }
 .score header a { text-decoration-color: #a8866b; }
 .score time { display: block; margin-top: .2rem; font-size: .85rem; color: var(--muted); }
+.mode { display: inline-block; margin-top: .3rem; font-size: .85rem; color: var(--amber); overflow-wrap: anywhere; }
 .score ol, .machines { padding: 0; margin: .8rem 0 0; list-style: none; }
 .score li { display: flex; justify-content: space-between; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
 .score li { border-top: 1px solid var(--border); padding: .5rem 0; overflow-wrap: anywhere; }

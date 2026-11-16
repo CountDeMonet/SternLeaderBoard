@@ -133,6 +133,54 @@ const history = database.prepare(`
   WHERE slug = ? AND id < ?
   ORDER BY id DESC LIMIT ?
 `);
+const gameTypes = new Set(['standard', 'challenge', 'competition', 'tournament', 'head_to_head', 'team', 'cooperation']);
+const highScores = database.prepare(`
+  WITH scores AS (
+    SELECT game.id, game.received_at_ms,
+           CASE WHEN json_extract(game.payload, '$.game_type') IN (SELECT value FROM json_each(?))
+                THEN json_extract(game.payload, '$.game_type') ELSE 'unknown' END AS game_type,
+           CASE WHEN json_extract(game.payload, '$.game_type') = 'challenge'
+                     AND json_type(game.payload, '$.challenge') = 'text'
+                THEN nullif(trim(json_extract(game.payload, '$.challenge')), '') END AS challenge,
+           player.key AS slot,
+           game.payload -> ('$.scores[' || player.key || ']') AS raw_score,
+           lower(json_extract(game.payload, '$.insider[' || player.key || ']')) AS insider_uuid
+    FROM games_played AS game, json_each(game.payload, '$.scores') AS player
+    WHERE game.slug = ?
+  ), normalized AS (
+    SELECT *, CASE WHEN raw_score = '-0' THEN '0' ELSE raw_score END AS score
+    FROM scores
+  ), ranked AS (
+    SELECT *, row_number() OVER (
+      PARTITION BY game_type, challenge
+      ORDER BY length(score) DESC, score DESC, id DESC, slot
+    ) AS position
+    FROM normalized
+  )
+  SELECT game_type, challenge, received_at_ms, slot, score, insider_uuid, position
+  FROM ranked WHERE position <= 10
+  ORDER BY game_type = 'unknown', game_type <> 'standard', game_type, challenge, position
+`);
+const knownGameTypes = JSON.stringify([...gameTypes]);
+
+function scoreGroups(slug) {
+  const groups = new Map();
+  for (const row of highScores.all(knownGameTypes, slug)) {
+    const key = JSON.stringify([row.game_type, row.challenge]);
+    if (!groups.has(key)) {
+      groups.set(key, { game_type: row.game_type, challenge: row.challenge, scores: [] });
+    }
+    groups.get(key).scores.push({
+      rank: row.position,
+      player: row.slot + 1,
+      score: JSON.rawJSON(row.score),
+      received_at: new Date(row.received_at_ms).toISOString(),
+      insider_user: resolvePlayer(row.insider_uuid),
+    });
+  }
+  return [...groups.values()];
+}
+
 const recent = database.prepare(`
   SELECT id, slug, received_at_ms, payload FROM games_played
   WHERE slug IN (SELECT value FROM json_each(?))
@@ -158,6 +206,8 @@ function parsePayload(body) {
   }
 
   const valid = game?.source === 'PAD score feed'
+    && (game.game_type == null || gameTypes.has(game.game_type))
+    && (game.challenge == null || typeof game.challenge === 'string')
     && typeof game.game === 'string' && game.game.length > 0
     && typeof game.port === 'string' && game.port.length > 0
     && typeof game.game_number === 'bigint' && game.game_number >= 1n
@@ -251,6 +301,7 @@ async function handle(request, response) {
         slug: machineSlug,
         name: games.get(machineSlug),
         hasImage: machineImages.has(machineSlug),
+        groups: url.searchParams.has('before') ? [] : scoreGroups(machineSlug),
         events: rows.slice(0, historyPageSize).map(readEvent),
         hasOlder: rows.length > historyPageSize,
         isLatest: !url.searchParams.has('before'),
@@ -293,6 +344,10 @@ async function handle(request, response) {
     return json(response, 200, [...games].map(([slug, name]) => ({
       slug, name, path: `/scores/${slug}`,
     })));
+  }
+  const highScoreSlug = /^\/scores\/([^/]+)\/high-scores$/.exec(url.pathname)?.[1];
+  if (request.method === 'GET' && games.has(highScoreSlug)) {
+    return json(response, 200, { slug: highScoreSlug, groups: scoreGroups(highScoreSlug) });
   }
 
   const slug = /^\/scores\/([^/]+)$/.exec(url.pathname)?.[1];

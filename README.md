@@ -13,5 +13,12 @@ To add artwork for a machine, put its PNG next to `server.mjs`, add a
 restart. Copy the PNGs with the project when moving the receiver.
 
 PAD still posts to `/scores/<slug>`, which also serves the JSON history.
+PAD v1.470.0 adds optional `game_type` and `challenge` fields. Rebuild each
+machine's card with the updated PAD to start receiving them. Older reports and
+reports with a null type appear under **Unknown game type**. Each machine page
+shows its ten highest individual scores per reported type, with a separate
+list for each named challenge. Team games use individual player scores.
+The same groups are available at `GET /scores/<slug>/high-scores`.
+
 When moving the receiver, copy `server.mjs`, `score-pages.mjs`, `score-pages.css`,
 `users.html`, `config.json`, and the SQLite database.
