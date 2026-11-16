@@ -57,8 +57,9 @@ network. Browse recent games, machine histories, and high scores by game type.
 Open the home page and select a machine to see its latest game, paginated
 history, and top 10 individual scores per game type. Named challenges have
 their own lists. Older reports and reports with a null type appear under
-**Unknown game type**. Reload the page to see newly received scores. Times
-are shown in Eastern Time.
+**Unknown game type**. Reload the page to see newly received scores. Receipt
+times are stored as UTC timestamps and displayed in your browser's time zone.
+With JavaScript disabled, pages show UTC.
 
 ![The Munsters machine page with latest game, high scores by game type, and history](docs/screenshots/machine-page.png)
 

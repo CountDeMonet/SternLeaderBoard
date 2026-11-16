@@ -9,6 +9,7 @@ const configPath = resolve(process.argv[2] ?? fileURLToPath(new URL('./config.js
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const usersPage = readFileSync(new URL('./users.html', import.meta.url));
 const scoreStyles = readFileSync(new URL('./score-pages.css', import.meta.url));
+const scoreTimes = readFileSync(new URL('./score-times.js', import.meta.url));
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const insiderPattern = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
 const games = new Map(Object.entries(config.games));
@@ -246,7 +247,7 @@ function html(response, body) {
   return response.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
-    'Content-Security-Policy': "default-src 'none'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'",
   }).end(body);
 }
 
@@ -280,6 +281,12 @@ async function handle(request, response) {
     }
     if (url.pathname === '/score-pages.css') {
       return response.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8', 'Cache-Control': 'no-cache' }).end(scoreStyles);
+    }
+    if (url.pathname === '/score-times.js') {
+      return response.writeHead(200, {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      }).end(scoreTimes);
     }
     const imageSlug = /^\/machine-images\/([a-z0-9-]+)\.png$/.exec(url.pathname)?.[1];
     const image = machineImages.get(imageSlug);

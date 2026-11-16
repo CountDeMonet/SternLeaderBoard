@@ -2,7 +2,7 @@ const htmlEntities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'
 const escape = value => String(value).replace(/[&<>"']/g, char => htmlEntities[char]);
 const numberFormat = new Intl.NumberFormat('en-US');
 const dates = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/New_York',
+  dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC',
 });
 const gameTypeLabels = new Map([
   ['standard', 'Standard'],
@@ -28,6 +28,7 @@ function page(title, current, body) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)} · Stern LeaderBoard</title>
 <link rel="stylesheet" href="/score-pages.css">
+<script src="/score-times.js" defer></script>
 <body>
 <header class="bar">
   <div class="shell masthead">
@@ -55,7 +56,7 @@ function scoreCard(event, title) {
     </li>`).join('');
   return `<article class="score">
     <header><h3>${title ?? mode}</h3>${title ? `<span class="mode">${mode}</span>` : ''}
-      <time datetime="${event.received_at}">${date} ET</time></header>
+      <time datetime="${event.received_at}">${date} UTC</time></header>
     <ol>${scores}</ol>
   </article>`;
 }
